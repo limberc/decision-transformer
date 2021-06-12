@@ -3,7 +3,6 @@ from argparse import ArgumentParser, Namespace
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
 import torch.nn.parallel
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
@@ -88,23 +87,15 @@ class CIFARLightningModel(LightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        images, target = batch
-        output = self(images)
-        loss_val = F.cross_entropy(output, target)
-        acc1, acc5 = self.__accuracy(output, target, topk=(1, 5))
-        self.log('train_loss', loss_val, on_step=True, on_epoch=True, logger=True)
-        self.log('train_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True, logger=True)
-        self.log('train_acc5', acc5, on_step=True, on_epoch=True, logger=True)
-        return loss_val
+        states, actions, rtgs, timesteps = batch
+        logits, loss = self(states, actions, rtgs, timesteps)  # logits = action
+        loss = loss.mean()
+        self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True)
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        images, target = batch
-        output = self(images)
-        loss_val = F.cross_entropy(output, target)
-        acc1, acc5 = self.__accuracy(output, target, topk=(1, 5))
-        self.log('val_loss', loss_val, on_step=True, on_epoch=True)
-        self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True)
-        self.log('val_acc5', acc5, on_step=True, on_epoch=True)
+        states, actions, rtgs, timesteps = batch
+        logits, loss = self(states, actions, rtgs, timesteps)
 
     @staticmethod
     def __accuracy(output, target, topk=(1,)):
@@ -157,13 +148,7 @@ class CIFARLightningModel(LightningModule):
         return val_loader
 
     def test_dataloader(self):
-        test_loader = torch.utils.data.DataLoader(
-            dataset=self.test_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.workers,
-            pin_memory=True,
-        )
-        return test_loader
+        return self.val_dataloader()
 
     def test_step(self, *args, **kwargs):
         return self.validation_step(*args, **kwargs)

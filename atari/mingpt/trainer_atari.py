@@ -59,7 +59,7 @@ class Trainer:
         # DataParallel wrappers keep raw model object in .module attribute
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
         logger.info("saving %s", self.config.ckpt_path)
-        # torch.save(raw_model.state_dict(), self.config.ckpt_path)
+        torch.save(raw_model.state_dict(), self.config.ckpt_path)
 
     def train(self):
         model, config = self.model, self.config
@@ -92,7 +92,6 @@ class Trainer:
                     losses.append(loss.item())
 
                 if is_train:
-
                     # backprop and update the parameters
                     model.zero_grad()
                     loss.backward()
@@ -131,7 +130,6 @@ class Trainer:
         self.tokens = 0  # counter used for learning rate decay
 
         for epoch in range(config.max_epochs):
-
             run_epoch('train', epoch_num=epoch)
             # if self.test_dataset is not None:
             #     test_loss = run_epoch('test')

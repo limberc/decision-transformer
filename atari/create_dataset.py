@@ -57,9 +57,8 @@ def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_p
                     done = True
             num_trajectories += (trajectories_per_buffer - trajectories_to_load)
             transitions_per_buffer[buffer_num] = i
-        print(
-            'this buffer has %d loaded transitions and there are now %d transitions total divided into %d trajectories' % (
-            i, len(obss), num_trajectories))
+        print('this buffer has %d loaded transitions and there are now %d transitions total divided into %d trajectories' % (
+                i, len(obss), num_trajectories))
 
     actions = np.array(actions)
     returns = np.array(returns)
@@ -86,5 +85,4 @@ def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_p
         timesteps[start_index:i + 1] = np.arange(i + 1 - start_index)
         start_index = i + 1
     print('max timestep is %d' % max(timesteps))
-
     return obss, actions, returns, done_idxs, rtg, timesteps
