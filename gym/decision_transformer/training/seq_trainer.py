@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 from decision_transformer.training.trainer import Trainer
@@ -11,7 +10,7 @@ class SequenceTrainer(Trainer):
         action_target = torch.clone(actions)
 
         state_preds, action_preds, reward_preds = self.model.forward(
-            states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask,
+            states, actions, rewards, rtg[:, :-1], timesteps, attention_mask=attention_mask,
         )
 
         act_dim = action_preds.shape[2]
@@ -29,6 +28,7 @@ class SequenceTrainer(Trainer):
         self.optimizer.step()
 
         with torch.no_grad():
-            self.diagnostics['training/action_error'] = torch.mean((action_preds-action_target)**2).detach().cpu().item()
+            self.diagnostics['training/action_error'] = torch.mean(
+                (action_preds - action_target) ** 2).detach().cpu().item()
 
         return loss.detach().cpu().item()

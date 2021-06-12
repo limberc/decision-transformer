@@ -1,17 +1,17 @@
+import os
+
 import numpy as np
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 
-import os
-
 
 class Reacher2dEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    
+
     def __init__(self):
         self.fingertip_sid = 0
         self.target_bid = 0
         curr_dir = os.path.dirname(os.path.abspath(__file__))
-        mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/reacher_2d.xml', 15)
+        mujoco_env.MujocoEnv.__init__(self, curr_dir + '/assets/reacher_2d.xml', 15)
         self.fingertip_sid = self.sim.model.site_name2id('fingertip')
         self.target_bid = self.sim.model.body_name2id('target')
         utils.EzPickle.__init__(self)
@@ -19,8 +19,8 @@ class Reacher2dEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def step(self, action):
         action = np.clip(action, -1.0, 1.0)
         self.do_simulation(action, self.frame_skip)
-        tip  = self.data.site_xpos[self.fingertip_sid][:2]
-        tar  = self.data.body_xpos[self.target_bid][:2]
+        tip = self.data.site_xpos[self.fingertip_sid][:2]
+        tar = self.data.body_xpos[self.target_bid][:2]
         dist = np.sum(np.abs(tip - tar))
         reward_dist = 0.  # - 0.1 * dist
         reward_ctrl = 0.0
@@ -32,8 +32,8 @@ class Reacher2dEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def _get_obs(self):
         theta = self.data.qpos.ravel()
-        tip  = self.data.site_xpos[self.fingertip_sid][:2]
-        tar  = self.data.body_xpos[self.target_bid][:2]
+        tip = self.data.site_xpos[self.fingertip_sid][:2]
+        tar = self.data.body_xpos[self.target_bid][:2]
         return np.concatenate([
             # self.data.qpos.flat,
             np.sin(theta),
@@ -41,7 +41,7 @@ class Reacher2dEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.dt * self.data.qvel.ravel(),
             tip,
             tar,
-            tip-tar,
+            tip - tar,
         ])
 
     def reset_model(self):

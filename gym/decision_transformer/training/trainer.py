@@ -1,7 +1,7 @@
+import time
+
 import numpy as np
 import torch
-
-import time
 
 
 class Trainer:

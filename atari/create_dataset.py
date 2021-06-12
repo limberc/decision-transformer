@@ -1,23 +1,8 @@
-import csv
-import logging
 # make deterministic
-from mingpt.utils import set_seed
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
-import math
-from torch.utils.data import Dataset
-from mingpt.model_atari import GPT, GPTConfig
-from mingpt.trainer_atari import Trainer, TrainerConfig
-from mingpt.utils import sample
-from collections import deque
-import random
-import torch
-import pickle
-import blosc
-import argparse
+
 from fixed_replay_buffer import FixedReplayBuffer
+
 
 def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_per_buffer):
     # -- load data from memory (make more efficient)
@@ -48,8 +33,9 @@ def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_p
             curr_num_transitions = len(obss)
             trajectories_to_load = trajectories_per_buffer
             while not done:
-                states, ac, ret, next_states, next_action, next_reward, terminal, indices = frb.sample_transition_batch(batch_size=1, indices=[i])
-                states = states.transpose((0, 3, 1, 2))[0] # (1, 84, 84, 4) --> (4, 84, 84)
+                states, ac, ret, next_states, next_action, next_reward, terminal, indices = frb.sample_transition_batch(
+                    batch_size=1, indices=[i])
+                states = states.transpose((0, 3, 1, 2))[0]  # (1, 84, 84, 4) --> (4, 84, 84)
                 obss += [states]
                 actions += [ac[0]]
                 stepwise_returns += [ret[0]]
@@ -71,7 +57,9 @@ def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_p
                     done = True
             num_trajectories += (trajectories_per_buffer - trajectories_to_load)
             transitions_per_buffer[buffer_num] = i
-        print('this buffer has %d loaded transitions and there are now %d transitions total divided into %d trajectories' % (i, len(obss), num_trajectories))
+        print(
+            'this buffer has %d loaded transitions and there are now %d transitions total divided into %d trajectories' % (
+            i, len(obss), num_trajectories))
 
     actions = np.array(actions)
     returns = np.array(returns)
@@ -83,20 +71,20 @@ def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_p
     rtg = np.zeros_like(stepwise_returns)
     for i in done_idxs:
         i = int(i)
-        curr_traj_returns = stepwise_returns[start_index:i+1] # includes i
-        for j in range(i-1, start_index-1, -1): # start from i-1
-            rtg_j = curr_traj_returns[j-start_index:i+1-start_index]
-            rtg[j] = sum(rtg_j) # includes i
-        start_index = i+1
+        curr_traj_returns = stepwise_returns[start_index:i + 1]  # includes i
+        for j in range(i - 1, start_index - 1, -1):  # start from i-1
+            rtg_j = curr_traj_returns[j - start_index:i + 1 - start_index]
+            rtg[j] = sum(rtg_j)  # includes i
+        start_index = i + 1
     print('max rtg is %d' % max(rtg))
 
     # -- create timestep dataset
     start_index = 0
-    timesteps = np.zeros(len(actions)+1, dtype=int)
+    timesteps = np.zeros(len(actions) + 1, dtype=int)
     for i in done_idxs:
         i = int(i)
-        timesteps[start_index:i+1] = np.arange(i+1 - start_index)
-        start_index = i+1
+        timesteps[start_index:i + 1] = np.arange(i + 1 - start_index)
+        start_index = i + 1
     print('max timestep is %d' % max(timesteps))
 
     return obss, actions, returns, done_idxs, rtg, timesteps

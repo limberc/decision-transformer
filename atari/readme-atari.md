@@ -1,7 +1,7 @@
-
 # Atari
 
-We build our Atari implementation on top of [minGPT](https://github.com/karpathy/minGPT) and benchmark our results on the [DQN-replay](https://github.com/google-research/batch_rl) dataset. 
+We build our Atari implementation on top of [minGPT](https://github.com/karpathy/minGPT) and benchmark our results on
+the [DQN-replay](https://github.com/google-research/batch_rl) dataset.
 
 ## Installation
 
@@ -13,7 +13,10 @@ conda env create -f conda_env.yml
 
 ## Downloading datasets
 
-Create a directory for the dataset and load the dataset using [gsutil](https://cloud.google.com/storage/docs/gsutil_install#install). Replace `[DIRECTORY_NAME]` and `[GAME_NAME]` accordingly (e.g., `./dqn_replay` for `[DIRECTORY_NAME]` and `Breakout` for `[GAME_NAME]`)
+Create a directory for the dataset and load the dataset
+using [gsutil](https://cloud.google.com/storage/docs/gsutil_install#install). Replace `[DIRECTORY_NAME]`
+and `[GAME_NAME]` accordingly (e.g., `./dqn_replay` for `[DIRECTORY_NAME]` and `Breakout` for `[GAME_NAME]`)
+
 ```
 mkdir [DIRECTORY_NAME]
 gsutil -m cp -R gs://atari-replay-datasets/dqn/[GAME_NAME] [DIRECTORY_NAME]

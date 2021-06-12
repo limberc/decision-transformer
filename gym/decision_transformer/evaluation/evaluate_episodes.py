@@ -14,7 +14,6 @@ def evaluate_episode(
         state_mean=0.,
         state_std=1.,
 ):
-
     model.eval()
     model.to(device=device)
 
@@ -74,8 +73,7 @@ def evaluate_episode_rtg(
         device='cuda',
         target_return=None,
         mode='normal',
-    ):
-
+):
     model.eval()
     model.to(device=device)
 
@@ -122,14 +120,14 @@ def evaluate_episode_rtg(
         rewards[-1] = reward
 
         if mode != 'delayed':
-            pred_return = target_return[0,-1] - (reward/scale)
+            pred_return = target_return[0, -1] - (reward / scale)
         else:
-            pred_return = target_return[0,-1]
+            pred_return = target_return[0, -1]
         target_return = torch.cat(
             [target_return, pred_return.reshape(1, 1)], dim=1)
         timesteps = torch.cat(
             [timesteps,
-             torch.ones((1, 1), device=device, dtype=torch.long) * (t+1)], dim=1)
+             torch.ones((1, 1), device=device, dtype=torch.long) * (t + 1)], dim=1)
 
         episode_return += reward
         episode_length += 1

@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 from decision_transformer.training.trainer import Trainer
@@ -16,7 +15,7 @@ class ActTrainer(Trainer):
 
         act_dim = action_preds.shape[2]
         action_preds = action_preds.reshape(-1, act_dim)
-        action_target = action_target[:,-1].reshape(-1, act_dim)
+        action_target = action_target[:, -1].reshape(-1, act_dim)
 
         loss = self.loss_fn(
             state_preds, action_preds, reward_preds,
