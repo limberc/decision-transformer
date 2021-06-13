@@ -4,13 +4,12 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.parallel
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import torch.utils.data.distributed
 from pytorch_lightning.core import LightningModule
 from pytorch_lightning.plugins import DDPPlugin
 from torch.utils.data import Dataset
+from transformers.optimization import get_linear_schedule_with_warmup
 
 from atari.create_dataset import create_dataset
 from atari.mingpt.model_atari import GPT, GPTConfig
@@ -48,21 +47,23 @@ class StateActionReturnDataset(Dataset):
         return states, actions, rtgs, timesteps
 
 
-class CIFARLightningModel(LightningModule):
+class DecisionTransformerAtari(LightningModule):
     # pull out resnet names from torchvision models
     def __init__(
             self,
+            model_type: str,
+            batch_size: int,
             lr: float,
             momentum: float,
-            model_type: str,
             weight_decay: int,
             num_buffers: int,
             num_steps: int,
             data_path: str,
             game: str,
             data_dir_prefix: str,
-            batch_size: int,
             context_length: int,
+            warmup_epochs: int,
+            final_tokens: int,
             trajectories_per_buffer: int,
             **kwargs,
     ):
@@ -78,13 +79,26 @@ class CIFARLightningModel(LightningModule):
         # self.train_datset, self.test_dataset = get_dataset(data_path, dataset)
         self.train_dataset = StateActionReturnDataset(context_length, num_buffers, num_steps, game, data_dir_prefix,
                                                       trajectories_per_buffer)
-        cfg = GPTConfig(self.train_dataset.vocab_size, self.train_dataset.block_size,
-                        n_layer=6, n_head=8, n_embd=128, model_type=model_type,
-                        max_timestep=max(self.timesteps.timesteps))
-        self.model = GPT(cfg)
+        self.cfg = GPTConfig(self.train_dataset.vocab_size, self.train_dataset.block_size,
+                             n_layer=6, n_head=8, n_embd=128, model_type=model_type,
+                             max_timestep=max(self.timesteps.timesteps))
+        self.warmup_epochs = warmup_epochs
+        self.final_tokens = final_tokens
+        self.model = GPT(self.cfg)
 
     def forward(self, x):
         return self.model(x)
+
+    def setup(self, stage):
+        if stage == 'fit':
+            # Get dataloader by calling it - train_dataloader() is called after setup() by default
+            # Calculate total steps
+            self.total_steps = (
+                    (len(self.train_dataset) // (self.batch_size * max(1, self.hparams.gpus)))
+                    // self.hparams.accumulate_grad_batches
+                    * float(self.hparams.max_epochs)
+            )
+            self.num_step_per_epoch = len(self.train_dataset) // (self.hparams.batch_size * max(1, self.hparams.gpus))
 
     def training_step(self, batch, batch_idx):
         states, actions, rtgs, timesteps = batch
@@ -93,37 +107,14 @@ class CIFARLightningModel(LightningModule):
         self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        states, actions, rtgs, timesteps = batch
-        logits, loss = self(states, actions, rtgs, timesteps)
-
-    @staticmethod
-    def __accuracy(output, target, topk=(1,)):
-        """Computes the accuracy over the k top predictions for the specified values of k"""
-        with torch.no_grad():
-            maxk = max(topk)
-            batch_size = target.size(0)
-
-            _, pred = output.topk(maxk, 1, True, True)
-            pred = pred.t()
-            correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-            res = []
-            for k in topk:
-                correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-                res.append(correct_k.mul_(100.0 / batch_size))
-            return res
+    def validation_step(self):
+        pass
 
     def configure_optimizers(self):
-        optimizer = optim.SGD(
-            self.parameters(),
-            lr=(self.lr or self.learning_rate),
-            momentum=self.momentum,
-            weight_decay=self.weight_decay,
-            nesterov=True
-        )
-        scheduler = lr_scheduler.MultiStepLR(
-            optimizer, milestones=[60, 120, 160], gamma=0.2
+        optimizer = self.model.configure_optimizers(self.cfg)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=self.hparams.warmup_epochs * self.num_step_per_epoch,
+            num_training_steps=self.total_steps
         )
         return [optimizer], [scheduler]
 
@@ -139,13 +130,7 @@ class CIFARLightningModel(LightningModule):
         return train_loader
 
     def val_dataloader(self):
-        val_loader = torch.utils.data.DataLoader(
-            dataset=self.test_dataset,
-            batch_size=self.batch_size,
-            num_workers=12,
-            pin_memory=True,
-        )
-        return val_loader
+        pass
 
     def test_dataloader(self):
         return self.val_dataloader()
@@ -156,23 +141,37 @@ class CIFARLightningModel(LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):  # pragma: no-cover
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                            choices=CIFARLightningModel.MODEL_NAMES,
-                            help=('model architecture: ' + ' | '.join(CIFARLightningModel.MODEL_NAMES)
-                                  + ' (default: resnet18)'))
+        parser.add_argument('--model_type', default='reward_conditioned',
+                            choices=['reward_conditioned', 'naive'],
+                            help="model type.")
         parser.add_argument('-b', '--batch-size', default=512, type=int,
                             metavar='N',
                             help='mini-batch size (default: 256), this is the total '
                                  'batch size of all GPUs on the current node when '
                                  'using Data Parallel or Distributed Data Parallel')
-        parser.add_argument('-lr', '--learning-rate', default=0.4, type=float,
-                            metavar='LR', help='initial learning rate', dest='lr')
-
+        parser.add_argument('-lr', '--learning-rate', default=3e-4, type=float,
+                            metavar='LR', help='initial learning rate (default: 3e-4)', dest='lr')
         parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                             help='momentum')
-        parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
-                            metavar='W', help='weight decay (default: 5e-4)',
+        parser.add_argument('--wd', '--weight-decay', default=0.1, type=float,
+                            metavar='W', help='weight decay (default: 0.1)',
                             dest='weight_decay')
+        parser.add_argument('--num_buffers', default=50, type=int,
+                            help='Number of buffers. (default: 50)')
+        parser.add_argument('--num_steps', default=1e5, type=int,
+                            help='Number of buffers. (default: 1e5)')
+        parser.add_argument('--game', default='Breakout', type=str,
+                            help='Atari Game.')
+        parser.add_argument('--data_dir_prefix', default='./dqn_replay/', type=str,
+                            help='Data dir')
+        parser.add_argument('--context_length', default=30, type=int,
+                            help='Context length. (default: 30)')
+        parser.add_argument('--warmup_epochs', default=375e6, type=int,
+                            help='Warmup tokens.')
+        parser.add_argument('--final_tokens', default=260e9, type=int,
+                            help='at what point we reach 10% of original LR')
+        parser.add_argument('--trajectories_per_buffer', default=30, type=int,
+                            help='Context length. (default: 30)')
 
         return parser
 
@@ -181,7 +180,7 @@ def main(args: Namespace) -> None:
     if args.seed is not None:
         pl.seed_everything(args.seed)
 
-    model = CIFARLightningModel(**vars(args))
+    model = DecisionTransformerAtari(**vars(args))
     trainer = pl.Trainer.from_argparse_args(args)
     if args.auto_lr_find or args.auto_scale_batch_size:
         trainer.tune(model)
@@ -201,11 +200,12 @@ def run_cli():
                                help='evaluate model on validation set')
     parent_parser.add_argument('--seed', type=int, default=42,
                                help='seed for initializing training.')
-    parser = CIFARLightningModel.add_model_specific_args(parent_parser)
+    parser = DecisionTransformerAtari.add_model_specific_args(parent_parser)
     parser.set_defaults(
         deterministic=True,
-        max_epochs=200,
+        max_epochs=5,
         accelerator='ddp',
+        gradient_clip_val=1.0,
         plugins=DDPPlugin(find_unused_parameters=False),
     )
     args = parser.parse_args()

@@ -5,7 +5,6 @@ import torch
 
 
 class Trainer:
-
     def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler=None, eval_fns=None):
         self.model = model
         self.optimizer = optimizer

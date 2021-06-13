@@ -213,7 +213,7 @@ class Trainer:
         return eval_return
 
 
-class Env():
+class Env:
     def __init__(self, args):
         self.device = args.device
         self.ale = atari_py.ALEInterface()

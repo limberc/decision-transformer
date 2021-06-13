@@ -30,7 +30,6 @@ set_seed(args.seed)
 
 
 class StateActionReturnDataset(Dataset):
-
     def __init__(self, data, block_size, actions, done_idxs, rtgs, timesteps):
         self.block_size = block_size
         self.vocab_size = max(actions) + 1
@@ -74,7 +73,8 @@ logging.basicConfig(
 train_dataset = StateActionReturnDataset(obss, args.context_length * 3, actions, done_idxs, rtgs, timesteps)
 
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
-                  n_layer=6, n_head=8, n_embd=128, model_type=args.model_type, max_timestep=max(timesteps))
+                  n_layer=6, n_head=8, n_embd=128, model_type=args.model_type,
+                  max_timestep=max(timesteps))
 model = GPT(mconf)
 
 # initialize a trainer instance and kick off training
